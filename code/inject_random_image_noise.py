@@ -78,6 +78,8 @@ def noisify(image_in, noise_type=["gaussian"], save=True, save_type='.npy', save
             'speckle'   Multiplicative noise using out = image + n*image,where
                 n is uniform noise with specified mean & variance..
                 (speckle is not advised for depth images)
+            'holes'     grows random patches where data is set to 0,
+                simulating missing data as seen in low cost depth camera data
             Defaults to ["gaussian"].
         save (bool, optional): toggle saving. Defaults to True.
         save_type (str, optional): if save==True, sets output file format.

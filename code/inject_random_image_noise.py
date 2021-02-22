@@ -1,7 +1,14 @@
 import numpy as np
 import cv2
+from scipy.ndimage import gaussian_filter
 
-# *functions based on https://stackoverflow.com/a/30609854
+# *some functions based on https://stackoverflow.com/a/30609854
+
+def smooth(image, sigma=5):
+    if len(image.shape)==3:
+        return gaussian_filter(image, sigma=(sigma, sigma, 0), mode='mirror')
+    else:
+        return gaussian_filter(image, sigma, mode='mirror')
 
 def gaussian(image, mean=0, var=0.1):
     row,col,ch= image.shape
@@ -66,7 +73,7 @@ def speckle(image):
     return noisy
 
 def noisify(image_in, noise_type=["gaussian"], save=True, save_type='.npy', save_path='noise_image',
-            gauss_mean=0, gauss_var=0.1, sandp_balance=0.5, sandp_amount=0.004):
+            gauss_mean=0, gauss_var=0.1, sandp_balance=0.5, sandp_amount=0.004, smooth_sigma=5):
     """Add various forms of noise to input image
 
     Args:
@@ -80,6 +87,8 @@ def noisify(image_in, noise_type=["gaussian"], save=True, save_type='.npy', save
                 (speckle is not advised for depth images)
             'holes'     grows random patches where data is set to 0,
                 simulating missing data as seen in low cost depth camera data
+            'smooth'    Applies a gaussian smoothing useful for removing sharp
+                features in depth images or "blurring" to color images
             Defaults to ["gaussian"].
         save (bool, optional): toggle saving. Defaults to True.
         save_type (str, optional): if save==True, sets output file format.
@@ -89,6 +98,7 @@ def noisify(image_in, noise_type=["gaussian"], save=True, save_type='.npy', save
         gauss_var (float, optional): param for gaussian noise. Defaults to 0.1.
         sandp_balance (float, optional): param for salt&pepper noise. Defaults to 0.5.
         sandp_amount (float, optional): param for salt&pepper noise. Defaults to 0.004.
+        smooth_sigma (int, optional): param for smoothing radius. Defaults to 5.
 
     Returns:
         image_out: noised image
@@ -99,7 +109,8 @@ def noisify(image_in, noise_type=["gaussian"], save=True, save_type='.npy', save
         "s&p":[salt_and_pepper, [sandp_balance, sandp_amount]],
         "poisson":[poisson, []],
         "speckle":[speckle, []],
-        "holes":[random_holes,[]]
+        "holes":[random_holes,[]],
+        "smooth":[smooth,[smooth_sigma]]
         }
     
     if not isinstance(noise_type,list):
@@ -125,8 +136,10 @@ def noisify(image_in, noise_type=["gaussian"], save=True, save_type='.npy', save
         # Get noise function and arguments 
         func, arguments = noise_type_switcher.get(noise_selected)
         # Execute the function
-        if len(arguments)>0:
+        if len(arguments)==2:
             im = func(im, arguments[0], arguments[1])
+        elif len(arguments)==1:
+            im = func(im, arguments[0])
         else:
             im = func(im)
     if added_axis:
@@ -142,13 +155,28 @@ def noisify(image_in, noise_type=["gaussian"], save=True, save_type='.npy', save
 def test():
     from matplotlib import pyplot as plt
 
-    fig, ax = plt.subplots(3,1)
-    image_ = np.load('C:/Users/mark/OneDrive/Documents/Blender Projects/outputs/depth_0017.npy')/10.0 # convert to mm range
-    #image_ = cv2.imread("C:/Users/mark/OneDrive/Documents/Blender Projects/outputs/Image0017.png")
-    #image_ = cv2.cvtColor(image_, cv2.COLOR_BGR2RGB)
+    fig, ax = plt.subplots(3,2,sharex=True, sharey=True, figsize=(20,15))
+    image_ = np.load("/home/local/keypoint_Data/clamp_from_blender/depth_0191.npy")/10.0 # convert to mm range
+    col_image_ = cv2.imread("/home/local/keypoint_Data/clamp_from_blender/Image0191.png")
+    col_image_ = cv2.cvtColor(col_image_, cv2.COLOR_BGR2RGB)
+    ax[0][1].imshow(col_image_.astype(np.int16))
+    ax[0][1].title.set_text('Colour Image')
+
+    col_im1= noisify(col_image_, noise_type=['smooth'], save=False)
+    col_im2= noisify(col_image_, noise_type=['speckle'], save=False)
+    ax[1][1].imshow(col_im1.astype(np.int16))
+    ax[2][1].imshow(col_im2.astype(np.int16))
+    ax[1][1].title.set_text('Colour - Smoothed')
+    ax[2][1].title.set_text('Colour - Speckle')
+
     #print(image_.max())
     #print(image_.shape)
-    ax[0].imshow(image_.astype(np.int16))
+    im_range = np.copy(image_)
+    im_range = np.clip(im_range, 250,450)
+    im_range[0,0]=250
+    im_range[0,1]=400
+    ax[0][0].imshow(im_range.astype(np.int16))
+    ax[0][0].title.set_text('Depth Image')
     '''
     # ! test check noise type 
     im = noisify(image_, ["spark"])
@@ -157,13 +185,22 @@ def test():
     # ! test single noise type
     '''
     im1 = noisify(image_, noise_type=['holes'], save=False)
-    ax[1].imshow(im1.astype(np.int16))
+    im1 = np.clip(im1, 250,450)
+    im1[0,0]=250
+    im1[0,1]=400
+    ax[1][0].imshow(im1.astype(np.int16))
+    ax[1][0].title.set_text('Depth - Holes')
     
     # ! test multiple noise types
-    im2 = noisify(image_, noise_type=['gaussian','s&p', 'speckle'], gauss_var=20, save=False)
-    ax[2].imshow(im2.astype(np.int16))
+    im2 = noisify(image_, noise_type=['smooth','gaussian','s&p'], gauss_var=20, save=False)
+    im2 = np.clip(im2, 250,450)
+    im2[0,0]=250
+    im2[0,1]=400
+    ax[2][0].imshow(im2.astype(np.int16))
+    ax[2][0].title.set_text('Depth - Smooth, Gaussian, S&P')
     
-    plt.show()
+    plt.savefig("output.png", bbox_inches = 'tight',
+        pad_inches = 0.2)
 
 if __name__ == "__main__":
     test()
